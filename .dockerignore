@@ -1,0 +1,36 @@
+node_modules/
+npm-debug.log
+yarn-debug.log
+yarn-error.log
+pnpm-debug.log
+
+# Build Outputs & Cache
+dist/
+build/
+.next/
+.cache/
+
+# Git History (Noisy Stuff)
+.git
+.gitignore
+
+# Secrets & Environment Variables (Secret Stuff)
+.env
+.env.*
+.npmrc
+*.pem
+secrets.dev.yaml
+
+# Docker Configuration
+Dockerfile
+docker-compose*
+.dockerignore
+
+# IDEs & Editor Configuration
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
