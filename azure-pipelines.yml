@@ -5,9 +5,9 @@ pool:
   vmImage: 'ubuntu-latest'
 
 variables:
-  dockerRegistryServiceConnection: 'dockerhub-connection' # Назва вашого Service Connection для Docker Hub
-  imageRepository: 'konopus/ci_cd_lab1' # Назва репозиторію в Docker Hub (наприклад, myname/my-express-app)
-  tag: '$(Build.BuildId)' # Використовуємо ID збірки як унікальний тег
+  dockerRegistryServiceConnection: 'dockerhub-connection'
+  imageRepository: 'konopus/ci_cd_lab1'
+  tag: '$(Build.BuildId)'
 
 stages:
   - stage: BuildAndTest
@@ -16,7 +16,7 @@ stages:
       - job: BuildJob
         displayName: 'Build & Unit Tests'
         steps:
-          # a. Збирання проєкту та запуск unit-тестів
+      
           - task: NodeTool@0
             inputs:
               versionSpec: '20.x'
@@ -38,7 +38,7 @@ stages:
       - job: DockerJob
         displayName: 'Docker Build & Push'
         steps:
-          # c. Збирання Docker-образу та d. Присвоєння тегів
+          
           - task: Docker@2
             displayName: 'Build and push Docker image'
             inputs:
