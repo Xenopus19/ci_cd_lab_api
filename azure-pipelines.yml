@@ -23,7 +23,7 @@ stages:
             displayName: 'Install Node.js'
 
           - script: |
-              npm ci
+              npm install
               npm run build
             displayName: 'Install dependencies & Build TypeScript'
 
