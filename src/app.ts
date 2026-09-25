@@ -12,7 +12,7 @@ const options: swaggerJsdoc.Options = {
   definition: {
     openapi: '3.0.0',
     info: {
-      title: 'My Express + TypeScript API',
+      title: 'Cats API',
       version: '1.0.0',
       description: 'CI/CD lab docs',
     },

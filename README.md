@@ -12,4 +12,5 @@ docker build -t express-app .
 
 docker run -d -p 3000:3000 --name running-app express-app
 
-Після успішного запуску можна буде отримати доступ до API за http://localhost:3000 
+Після успішного запуску можна буде отримати доступ до API за http://localhost:3000.
+Наприклад, на http://localhost:3000/docs можна подивитися Swagger інтерфейс для API.
