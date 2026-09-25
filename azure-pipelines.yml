@@ -1,0 +1,51 @@
+trigger:
+  - main
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  dockerRegistryServiceConnection: 'dockerhub-connection' # Назва вашого Service Connection для Docker Hub
+  imageRepository: 'your-dockerhub-username/your-image-name' # Назва репозиторію в Docker Hub (наприклад, myname/my-express-app)
+  tag: '$(Build.BuildId)' # Використовуємо ID збірки як унікальний тег
+
+stages:
+  - stage: BuildAndTest
+    displayName: 'Збирання та Тестування'
+    jobs:
+      - job: BuildJob
+        displayName: 'Build & Unit Tests'
+        steps:
+          # a. Збирання проєкту та запуск unit-тестів
+          - task: NodeTool@0
+            inputs:
+              versionSpec: '20.x'
+            displayName: 'Install Node.js'
+
+          - script: |
+              npm ci
+              npm run build
+            displayName: 'Install dependencies & Build TypeScript'
+
+          - script: |
+              npm run test
+            displayName: 'Run Unit Tests'
+
+  - stage: DockerBuildAndPublish
+    displayName: 'Docker: Збірка та Публікація'
+    dependsOn: BuildAndTest
+    jobs:
+      - job: DockerJob
+        displayName: 'Docker Build & Push'
+        steps:
+          # c. Збирання Docker-образу та d. Присвоєння тегів
+          - task: Docker@2
+            displayName: 'Build and push Docker image'
+            inputs:
+              command: 'buildAndPush'
+              repository: '$(imageRepository)'
+              dockerfile: '**/Dockerfile'
+              containerRegistry: '$(dockerRegistryServiceConnection)'
+              tags: |
+                $(tag)
+                latest
