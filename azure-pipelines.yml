@@ -6,7 +6,7 @@ pool:
 
 variables:
   dockerRegistryServiceConnection: 'dockerhub-connection' # Назва вашого Service Connection для Docker Hub
-  imageRepository: 'your-dockerhub-username/your-image-name' # Назва репозиторію в Docker Hub (наприклад, myname/my-express-app)
+  imageRepository: 'konopus/ci_cd_lab1' # Назва репозиторію в Docker Hub (наприклад, myname/my-express-app)
   tag: '$(Build.BuildId)' # Використовуємо ID збірки як унікальний тег
 
 stages:
