@@ -2,10 +2,13 @@ name: CI/CD
 
 on:
   push:
-    branches: [main]
-
-env:
-  IMAGE_REPOSITORY: konopus/ci_cd_lab1
+    branches:
+      - main
+      - 'feature/**'
+      - 'bugfix/**'
+    paths-ignore:
+      - 'docs/**'
+      - 'README.md'
 
 jobs:
   build-and-test:
@@ -28,24 +31,11 @@ jobs:
         run: npm run test
 
   docker-build-and-publish:
-    name: Docker Build & Push
-    runs-on: ubuntu-latest
     needs: build-and-test
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Log in to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: ./Dockerfile
-          push: true
-          tags: |
-            ${{ env.IMAGE_REPOSITORY }}:${{ github.run_number }}
-            ${{ env.IMAGE_REPOSITORY }}:latest
+    uses: ./.github/workflows/docker-pack-n-push.yaml
+    with:
+      repository: konopus/ci_cd_lab1
+      tag: ${{ github.run_number }}
+      push: ${{ github.ref == 'refs/heads/main' }}
+      latest: ${{ github.ref == 'refs/heads/main' }}
+    secrets: inherit
