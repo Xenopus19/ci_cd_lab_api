@@ -1,5 +1,6 @@
 import express from "express";
 import catsRouter from "./controllers/catsController";
+import cryptoRouter from "./controllers/cryptoController";
 import swaggerUi from 'swagger-ui-express';
 import swaggerJsdoc from 'swagger-jsdoc';
 
@@ -30,5 +31,6 @@ const swaggerSpec = swaggerJsdoc(options);
 app.use('/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
 app.use("/api/cats", catsRouter);
+app.use("/api/crypto-keys", cryptoRouter);
 
 export default app;
