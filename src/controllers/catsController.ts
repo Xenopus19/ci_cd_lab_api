@@ -1,16 +1,24 @@
 import express from "express";
-
-export interface Cat {
-    id: number;
-    name: string;
-    age: number;
-    color: string;
-}
-
-const cats: Cat[] = [];
-let nextId = 1;
+import { getCatModel } from "../models/cat";
 
 const catsRouter = express.Router();
+const maxInteger = 2147483647;
+
+function isValidId(value: string): boolean {
+    const id = Number(value);
+    return Number.isInteger(id) && id > 0 && id <= maxInteger;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function validFields(body: Record<string, unknown>): boolean {
+    return (body.name === undefined || (typeof body.name === "string" && body.name.length > 0))
+        && (body.color === undefined || (typeof body.color === "string" && body.color.length > 0))
+        && (body.age === undefined || (typeof body.age === "number" && Number.isInteger(body.age)
+            && body.age >= 0 && body.age <= maxInteger));
+}
 
 /**
  * @openapi
@@ -29,13 +37,16 @@ const catsRouter = express.Router();
  *           example: 1
  *         name:
  *           type: string
+ *           minLength: 1
  *           example: Whiskers
  *         age:
  *           type: integer
  *           minimum: 0
+ *           maximum: 2147483647
  *           example: 3
  *         color:
  *           type: string
+ *           minLength: 1
  *           example: black
  *     CatInput:
  *       type: object
@@ -46,13 +57,16 @@ const catsRouter = express.Router();
  *       properties:
  *         name:
  *           type: string
+ *           minLength: 1
  *           example: Whiskers
  *         age:
  *           type: integer
  *           minimum: 0
+ *           maximum: 2147483647
  *           example: 3
  *         color:
  *           type: string
+ *           minLength: 1
  *           example: black
  */
 
@@ -72,7 +86,8 @@ const catsRouter = express.Router();
  *               items:
  *                 $ref: '#/components/schemas/Cat'
  */
-catsRouter.get("/", (req, res) => {
+catsRouter.get("/", async (req, res) => {
+    const cats = await getCatModel().findAll({ order: [["id", "ASC"]] });
     res.json(cats);
 });
 
@@ -99,8 +114,8 @@ catsRouter.get("/", (req, res) => {
  *       404:
  *         description: Cat not found
  */
-catsRouter.get("/:id", (req, res) => {
-    const cat = cats.find((c) => c.id === Number(req.params.id));
+catsRouter.get("/:id", async (req, res) => {
+    const cat = isValidId(req.params.id) ? await getCatModel().findByPk(Number(req.params.id)) : null;
     if (!cat) {
         return res.status(404).json({ message: "Cat not found" });
     }
@@ -127,15 +142,18 @@ catsRouter.get("/:id", (req, res) => {
  *             schema:
  *               $ref: '#/components/schemas/Cat'
  *       400:
- *         description: Required fields are missing
+ *         description: Required fields are missing or invalid
  */
-catsRouter.post("/", (req, res) => {
-    const { name, age, color } = req.body;
-    if (!name || age === undefined || !color) {
+catsRouter.post("/", async (req, res) => {
+    const body: unknown = req.body;
+    if (!isRecord(body) || !body.name || body.age === undefined || !body.color) {
         return res.status(400).json({ message: "name, age and color are required" });
     }
-    const cat: Cat = { id: nextId++, name, age, color };
-    cats.push(cat);
+    if (!validFields(body) || typeof body.name !== "string"
+        || typeof body.age !== "number" || typeof body.color !== "string") {
+        return res.status(400).json({ message: "Invalid cat fields" });
+    }
+    const cat = await getCatModel().create({ name: body.name, age: body.age, color: body.color });
     res.status(201).json(cat);
 });
 
@@ -157,7 +175,18 @@ catsRouter.post("/", (req, res) => {
  *       content:
  *         application/json:
  *           schema:
- *             $ref: '#/components/schemas/CatInput'
+ *             type: object
+ *             properties:
+ *               name:
+ *                 type: string
+ *                 minLength: 1
+ *               age:
+ *                 type: integer
+ *                 minimum: 0
+ *                 maximum: 2147483647
+ *               color:
+ *                 type: string
+ *                 minLength: 1
  *     responses:
  *       200:
  *         description: The updated cat
@@ -165,18 +194,24 @@ catsRouter.post("/", (req, res) => {
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/Cat'
+ *       400:
+ *         description: Invalid cat fields
  *       404:
  *         description: Cat not found
  */
-catsRouter.put("/:id", (req, res) => {
-    const cat = cats.find((c) => c.id === Number(req.params.id));
+catsRouter.put("/:id", async (req, res) => {
+    const cat = isValidId(req.params.id) ? await getCatModel().findByPk(Number(req.params.id)) : null;
     if (!cat) {
         return res.status(404).json({ message: "Cat not found" });
     }
-    const { name, age, color } = req.body;
-    if (name !== undefined) cat.name = name;
-    if (age !== undefined) cat.age = age;
-    if (color !== undefined) cat.color = color;
+    const body: unknown = req.body;
+    if (!isRecord(body) || !validFields(body)) {
+        return res.status(400).json({ message: "Invalid cat fields" });
+    }
+    if (typeof body.name === "string") cat.name = body.name;
+    if (typeof body.age === "number") cat.age = body.age;
+    if (typeof body.color === "string") cat.color = body.color;
+    await cat.save();
     res.json(cat);
 });
 
@@ -199,12 +234,11 @@ catsRouter.put("/:id", (req, res) => {
  *       404:
  *         description: Cat not found
  */
-catsRouter.delete("/:id", (req, res) => {
-    const index = cats.findIndex((c) => c.id === Number(req.params.id));
-    if (index === -1) {
+catsRouter.delete("/:id", async (req, res) => {
+    const deleted = isValidId(req.params.id) ? await getCatModel().destroy({ where: { id: Number(req.params.id) } }) : 0;
+    if (deleted === 0) {
         return res.status(404).json({ message: "Cat not found" });
     }
-    cats.splice(index, 1);
     res.status(204).send();
 });
 
