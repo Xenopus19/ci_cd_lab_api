@@ -1,0 +1,27 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "cats.migrationName" . }}
+spec:
+  backoffLimit: {{ .Values.migration.backoffLimit }}
+  activeDeadlineSeconds: {{ .Values.migration.activeDeadlineSeconds }}
+  template:
+    spec:
+      restartPolicy: Never
+      initContainers:
+        - name: wait-for-postgres
+          image: "{{ .Values.images.postgres.repository }}:{{ .Values.images.postgres.tag }}"
+          imagePullPolicy: {{ .Values.images.postgres.pullPolicy }}
+          command: ["/bin/sh", "-c", "until pg_isready -h {{ include "cats.name" . }}-db -p 5432; do echo 'Waiting for PostgreSQL'; sleep 3; done"]
+      containers:
+        - name: migrator
+          image: "{{ .Values.images.migrator.repository }}:{{ .Values.images.migrator.tag }}"
+          imagePullPolicy: {{ .Values.images.migrator.pullPolicy }}
+          env:
+            - name: NODE_ENV
+              value: production
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.database.existingSecret | quote }}
+                  key: DATABASE_URL

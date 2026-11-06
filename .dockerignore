@@ -20,6 +20,7 @@ build/
 .npmrc
 *.pem
 secrets.dev.yaml
+secret-*.yaml
 
 # Docker Configuration
 Dockerfile

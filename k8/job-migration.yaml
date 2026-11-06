@@ -1,0 +1,28 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: db-migration-job
+spec:
+  ttlSecondsAfterFinished: 300 # Автоматично видаляє виконаний Job через 5 хв
+  template:
+    spec:
+      containers:
+      - name: db-migrator
+        image: ghcr.io/your-username/your-repo/db-migrator:latest
+        env:
+        # Передаємо вказівку середовища для Sequelize
+        - name: NODE_ENV
+          value: "production"
+        # Передаємо DATABASE_URL з Secret
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: db-credentials
+              key: DATABASE_URL
+        - name: DB_SSL
+          valueFrom:
+            secretKeyRef:
+              name: db-credentials
+              key: DB_SSL
+      restartPolicy: OnFailure
+  backoffLimit: 3

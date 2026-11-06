@@ -25,6 +25,10 @@ on:
         description: Also tag the image as latest
         type: boolean
         default: true
+      artifact_name:
+        description: Prefix for the image artifact name when push is false
+        type: string
+        default: docker-image
     secrets:
       DOCKERHUB_USERNAME:
         required: false
@@ -70,5 +74,5 @@ jobs:
         if: ${{ !inputs.push }}
         uses: actions/upload-artifact@v4
         with:
-          name: docker-image-${{ inputs.tag }}
+          name: ${{ inputs.artifact_name }}-${{ inputs.tag }}
           path: ${{ runner.temp }}/image.tar

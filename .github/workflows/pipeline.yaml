@@ -2,13 +2,10 @@ name: CI/CD
 
 on:
   push:
-    branches:
-      - main
-      - 'feature/**'
-      - 'bugfix/**'
     paths-ignore:
       - 'docs/**'
       - 'README.md'
+  pull_request:
 
 jobs:
   build-and-test:
@@ -20,18 +17,53 @@ jobs:
       - name: Install Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20.x'
+          node-version: '24.x'
 
       - name: Install dependencies & Build TypeScript
         run: |
-          npm install
+          npm ci
           npm run build
+          npx tsc --noEmit
 
       - name: Run Unit Tests
         run: npm run test
 
+  web-build:
+    name: Build and lint web interface
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web-app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.x'
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run build
+
+  helm-chart:
+    name: Validate and package Helm chart
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4.3.0
+        with:
+          version: v3.16.4
+      - name: Lint, render and package
+        run: |
+          helm lint helm/cats
+          helm template cats helm/cats > "$RUNNER_TEMP/cats-rendered.yaml"
+          helm package helm/cats --destination "$RUNNER_TEMP"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: helm-chart-${{ github.run_number }}
+          path: ${{ runner.temp }}/cats-*.tgz
+          if-no-files-found: error
+
   docker-build-and-publish:
-    needs: build-and-test
+    needs: kubernetes-smoke-test
     uses: ./.github/workflows/docker-pack-n-push.yaml
     with:
       repository: konopus/ci_cd_lab1
@@ -39,3 +71,125 @@ jobs:
       push: ${{ github.ref == 'refs/heads/main' }}
       latest: ${{ github.ref == 'refs/heads/main' }}
     secrets: inherit
+
+  docker-build-and-publish-web:
+    needs: kubernetes-smoke-test
+    uses: ./.github/workflows/docker-pack-n-push.yaml
+    with:
+      repository: konopus/ci_cd_lab1-web
+      tag: ${{ github.run_number }}
+      push: ${{ github.ref == 'refs/heads/main' }}
+      latest: ${{ github.ref == 'refs/heads/main' }}
+      context: ./web-app
+      dockerfile: ./web-app/Dockerfile
+      artifact_name: docker-image-web
+    secrets: inherit
+
+  test-migrator:
+    name: Test migrator image
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: migrator
+          POSTGRES_PASSWORD: migrator
+          POSTGRES_DB: migrator_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U migrator -d migrator_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build and run migrator twice
+        run: |
+          docker build -f Dockerfile.migrator -t migrator-test .
+          if docker run --rm migrator-test; then
+            echo "Migrator must fail without DATABASE_URL"
+            exit 1
+          fi
+          docker run --rm --network host -e DATABASE_URL=postgres://migrator:migrator@localhost:5432/migrator_test migrator-test
+          docker run --rm --network host -e DATABASE_URL=postgres://migrator:migrator@localhost:5432/migrator_test migrator-test
+
+      - name: Check migration and schema
+        run: |
+          test "$(docker exec ${{ job.services.postgres.id }} psql -U migrator -d migrator_test -Atc "SELECT count(*) FROM \"SequelizeMeta\" WHERE name = '20261105000000-create-cats.cjs'")" = "1"
+          test "$(docker exec ${{ job.services.postgres.id }} psql -U migrator -d migrator_test -Atc "SELECT count(*) FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'cats' AND column_name IN ('id', 'name', 'age', 'color')")" = "4"
+
+  docker-build-and-publish-migrator:
+    needs: [test-migrator, kubernetes-smoke-test]
+    uses: ./.github/workflows/docker-pack-n-push.yaml
+    with:
+      repository: konopus/ci_cd_lab1-migrator
+      tag: ${{ github.run_number }}
+      push: ${{ github.ref == 'refs/heads/main' }}
+      latest: ${{ github.ref == 'refs/heads/main' }}
+      dockerfile: ./Dockerfile.migrator
+      artifact_name: docker-image-migrator
+    secrets: inherit
+
+  kubernetes-smoke-test:
+    name: Test Helm deployment on kind
+    needs: [build-and-test, web-build, helm-chart]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4.3.0
+        with:
+          version: v3.16.4
+      - uses: helm/kind-action@v1.12.0
+        with:
+          cluster_name: cats-ci
+      - name: Build and load images
+        run: |
+          docker build -t cats-api:ci .
+          docker build -f Dockerfile.migrator -t cats-migrator:ci .
+          docker build -t cats-web:ci web-app
+          kind load docker-image --name cats-ci cats-api:ci cats-migrator:ci cats-web:ci
+      - name: Install, upgrade and exercise the application
+        run: |
+          set -euo pipefail
+          kubectl create namespace cats-ci
+          kubectl -n cats-ci create secret generic cats-db \
+            --from-literal=password=ci-password \
+            --from-literal=DATABASE_URL='postgres://cats:ci-password@cats-db:5432/cats'
+          deploy() {
+            helm upgrade --install cats helm/cats -n cats-ci --wait --wait-for-jobs --timeout 12m \
+              --set images.api.repository=cats-api --set images.api.tag=ci \
+              --set images.web.repository=cats-web --set images.web.tag=ci \
+              --set images.migrator.repository=cats-migrator --set images.migrator.tag=ci
+          }
+          deploy
+          kubectl -n cats-ci port-forward service/cats-web 18080:80 > "$RUNNER_TEMP/port-forward.log" 2>&1 &
+          forward_pid=$!
+          trap 'kill "$forward_pid" 2>/dev/null || true' EXIT
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:18080/ > "$RUNNER_TEMP/index.html"; then break; fi
+            sleep 2
+          done
+          grep -q '<div id="root"></div>' "$RUNNER_TEMP/index.html"
+          curl -fsS -X POST http://localhost:18080/api/cats/ \
+            -H 'Content-Type: application/json' \
+            -d '{"name":"CI cat","age":3,"color":"black"}' > "$RUNNER_TEMP/cat.json"
+          python -c "import json; d=json.load(open('$RUNNER_TEMP/cat.json')); assert d['name']=='CI cat' and d['age']==3"
+          cat_id=$(python -c "import json; print(json.load(open('$RUNNER_TEMP/cat.json'))['id'])")
+          curl -fsS -X PUT "http://localhost:18080/api/cats/$cat_id" \
+            -H 'Content-Type: application/json' -d '{"color":"white"}' > "$RUNNER_TEMP/updated.json"
+          python -c "import json; assert json.load(open('$RUNNER_TEMP/updated.json'))['color']=='white'"
+          deploy
+          curl -fsS http://localhost:18080/api/cats/ > "$RUNNER_TEMP/cats.json"
+          python -c "import json; assert any(c['name']=='CI cat' and c['color']=='white' for c in json.load(open('$RUNNER_TEMP/cats.json')))"
+          curl -fsS -X DELETE "http://localhost:18080/api/cats/$cat_id"
+          curl -fsS http://localhost:18080/api/cats/ > "$RUNNER_TEMP/cats.json"
+          python -c "import json; assert not any(c['id']==int('$cat_id') for c in json.load(open('$RUNNER_TEMP/cats.json')))"
+      - name: Show deployment diagnostics on failure
+        if: failure()
+        run: |
+          kubectl -n cats-ci get all
+          kubectl -n cats-ci describe pods
+          kubectl -n cats-ci logs -l job-name=cats-migrate-1 --all-containers=true --prefix=true || true
