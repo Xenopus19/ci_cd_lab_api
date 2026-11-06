@@ -1,0 +1,40 @@
+images:
+  api:
+    repository: konopus/ci_cd_lab1
+    tag: latest
+    pullPolicy: IfNotPresent
+  web:
+    repository: konopus/ci_cd_lab1-web
+    tag: latest
+    pullPolicy: IfNotPresent
+  migrator:
+    repository: konopus/ci_cd_lab1-migrator
+    tag: latest
+    pullPolicy: IfNotPresent
+  postgres:
+    repository: postgres
+    tag: 16-alpine
+    pullPolicy: IfNotPresent
+  kubectl:
+    repository: registry.k8s.io/kubectl
+    tag: v1.30.0
+    pullPolicy: IfNotPresent
+
+api:
+  replicas: 2
+web:
+  replicas: 2
+  serviceType: ClusterIP
+
+database:
+  name: cats
+  user: cats
+  # Create this Secret before installing. It must contain password and DATABASE_URL.
+  existingSecret: cats-db
+  storage: 1Gi
+  # Empty uses the cluster's default StorageClass.
+  storageClassName: ""
+
+migration:
+  backoffLimit: 6
+  activeDeadlineSeconds: 600

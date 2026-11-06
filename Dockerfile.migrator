@@ -1,14 +1,11 @@
-FROM node:20-alpine
+FROM node:24-alpine
 
 WORKDIR /app
 
 COPY package*.json ./
-
-RUN npm ci --only=production
+RUN npm ci
 
 COPY config ./config
-COPY migrations ./migrations
-COPY .sequelizerc ./
+COPY database/migrations ./database/migrations
 
-COPY dist ./dist
-CMD ["node", "dist/migrator.js"]
+CMD ["npm", "run", "db:migrate"]
