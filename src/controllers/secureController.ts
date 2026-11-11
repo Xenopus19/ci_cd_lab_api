@@ -2,9 +2,16 @@ import express, { type Request, type Response } from 'express';
 import { decrypt as aesDecrypt, encrypt as aesEncrypt } from '../../packages/aesEncryption/src/index';
 import { decrypt as rsaDecrypt } from '../services/rsaService';
 
+const SESSION_DURATION_MS = 3600 * 1000;
 const secureRouter = express.Router();
 
-const sessions = new Map<string, string>();
+export interface Session {
+    sessionId: string;
+    key: string;
+    expiresAt: Date;
+}
+
+const sessions = new Map<string, Session>();
 
 function header(req: Request, name: string): string | undefined {
     const value = req.headers[name];
@@ -48,7 +55,7 @@ secureRouter.post('/session', (req: Request, res: Response): Response => {
     try {
         const key = rsaDecrypt(rsaId, encryptedKey);
         aesEncrypt(key, '');
-        sessions.set(sessionId, key);
+        sessions.set(sessionId, { sessionId, key, expiresAt: new Date(Date.now() + SESSION_DURATION_MS) });
         return res.status(201).json({ status: 'ok', sessionId });
     } catch (error: unknown) {
         return res.status(400).json({
@@ -79,7 +86,7 @@ secureRouter.post('/session', (req: Request, res: Response): Response => {
  *     responses:
  *       200: { description: Encrypted response }
  *       400: { description: Invalid request }
- *       404: { description: Unknown session }
+ *       404: { description: Unknown session or session expired }
  */
 secureRouter.post('/message', (req: Request, res: Response): Response => {
     const sessionId = header(req, 'x-session-id');
@@ -88,10 +95,15 @@ secureRouter.post('/message', (req: Request, res: Response): Response => {
         return res.status(400).json({ error: 'x-session-id header and ciphertext are required.' });
     }
 
-    const key = sessions.get(sessionId);
-    if (!key) {
+    const session = sessions.get(sessionId);
+    if (!session) {
         return res.status(404).json({ error: 'Unknown session.' });
     }
+    if (session.expiresAt.getTime() <= Date.now()) {
+        sessions.delete(sessionId);
+        return res.status(404).json({ error: 'Session expired.' });
+    }
+    const key = session.key;
 
     try {
         const message = aesDecrypt(key, ciphertext);
