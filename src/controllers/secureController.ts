@@ -1,17 +1,12 @@
-import express, { type Request, type Response } from 'express';
+import express, { type NextFunction, type Request, type Response } from 'express';
 import { decrypt as aesDecrypt, encrypt as aesEncrypt } from '../../packages/aesEncryption/src/index';
 import { decrypt as rsaDecrypt } from '../services/rsaService';
+import { storeSession, type Session } from '../services/sessionService';
+import { requireSession } from '../middleware/requireSession';
+import { isHashValid } from '../utils/hash';
 
-const SESSION_DURATION_MS = 3600 * 1000;
+const SESSION_DURATION_MS = 1000;
 const secureRouter = express.Router();
-
-export interface Session {
-    sessionId: string;
-    key: string;
-    expiresAt: Date;
-}
-
-const sessions = new Map<string, Session>();
 
 function header(req: Request, name: string): string | undefined {
     const value = req.headers[name];
@@ -55,7 +50,7 @@ secureRouter.post('/session', (req: Request, res: Response): Response => {
     try {
         const key = rsaDecrypt(rsaId, encryptedKey);
         aesEncrypt(key, '');
-        sessions.set(sessionId, { sessionId, key, expiresAt: new Date(Date.now() + SESSION_DURATION_MS) });
+        storeSession(sessionId, key, new Date(Date.now() + SESSION_DURATION_MS));
         return res.status(201).json({ status: 'ok', sessionId });
     } catch (error: unknown) {
         return res.status(400).json({
@@ -81,32 +76,37 @@ secureRouter.post('/session', (req: Request, res: Response): Response => {
  *         application/json:
  *           schema:
  *             type: object
+ *             required: [ciphertext, hash]
  *             properties:
  *               ciphertext: { type: string }
+ *               hash: { type: string, description: Hex-encoded SHA-256 hash of the plaintext message }
  *     responses:
  *       200: { description: Encrypted response }
  *       400: { description: Invalid request }
- *       404: { description: Unknown session or session expired }
+ *       404: { description: Unknown session }
+ *       440: { description: Session expired }
  */
-secureRouter.post('/message', (req: Request, res: Response): Response => {
+secureRouter.post('/message', (req: Request, res: Response, next: NextFunction): void => {
     const sessionId = header(req, 'x-session-id');
     const ciphertext = req.body?.ciphertext;
     if (!sessionId || typeof ciphertext !== 'string') {
-        return res.status(400).json({ error: 'x-session-id header and ciphertext are required.' });
+        res.status(400).json({ error: 'x-session-id header and ciphertext are required.' });
+        return;
     }
-
-    const session = sessions.get(sessionId);
-    if (!session) {
-        return res.status(404).json({ error: 'Unknown session.' });
+    next();
+}, requireSession, (req: Request, res: Response<unknown, { session: Session }>): Response => {
+    const ciphertext = req.body.ciphertext;
+    const key = res.locals.session.key;
+    const hash = req.body?.hash;
+    if (typeof hash !== 'string') {
+        return res.status(400).json({ error: 'Hash is required.' });
     }
-    if (session.expiresAt.getTime() <= Date.now()) {
-        sessions.delete(sessionId);
-        return res.status(404).json({ error: 'Session expired.' });
-    }
-    const key = session.key;
-
     try {
         const message = aesDecrypt(key, ciphertext);
+        if (!isHashValid(message, hash)) {
+            return res.status(400).json({ error: 'Hash mismatch.' });
+        }
+        console.log('Hash is valid.');
         const reply = JSON.stringify({ message, receivedAt: new Date().toISOString() });
         return res.json({ ciphertext: aesEncrypt(key, reply) });
     } catch (error: unknown) {

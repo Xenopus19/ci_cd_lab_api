@@ -2,6 +2,7 @@ import express from "express";
 import catsRouter from "./controllers/catsController";
 import cryptoRouter from "./controllers/cryptoController";
 import secureRouter from "./controllers/secureController";
+import sessionsRouter from "./controllers/sessionsController";
 import swaggerUi from 'swagger-ui-express';
 import swaggerJsdoc from 'swagger-jsdoc';
 
@@ -34,5 +35,6 @@ app.use('/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 app.use("/api/cats", catsRouter);
 app.use("/api/crypto-keys", cryptoRouter);
 app.use("/api/secure", secureRouter);
+app.use("/api/sessions", sessionsRouter);
 
 export default app;

@@ -1,4 +1,4 @@
-import { constants, publicEncrypt, randomUUID } from 'node:crypto';
+import { constants, publicEncrypt, randomUUID, createHash } from 'node:crypto';
 import { decrypt, encrypt, generateKey } from '../../packages/aesEncryption/src/index';
 
 interface Session {
@@ -48,10 +48,11 @@ export class SecureClient {
     }
 
     private async sendWithSession(session: Session, message: string): Promise<string> {
+        const hash = createHash('sha256').update(message).digest('hex');
         const response = await this.request<{ ciphertext: string }>('/api/secure/message', {
             method: 'POST',
             headers: { 'x-session-id': session.id },
-            body: JSON.stringify({ ciphertext: encrypt(session.key, message) })
+            body: JSON.stringify({ ciphertext: encrypt(session.key, message), hash })
         });
         return decrypt(session.key, response.ciphertext);
     }
@@ -63,11 +64,12 @@ export class SecureClient {
         try {
             reply = await this.sendWithSession(session, message);
         } catch (error: unknown) {
-            if (!(error instanceof RequestError) || error.status !== 404 ||
+            if (!(error instanceof RequestError) || error.status !== 440 ||
                 typeof error.body !== 'object' || error.body === null ||
                 !('error' in error.body) || error.body.error !== 'Session expired.') {
                 throw error;
             }
+            console.log('Session expired, creating a new session.');
             this.session = undefined;
             session = await this.createSession();
             this.session = session;
