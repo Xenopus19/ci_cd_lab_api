@@ -1,6 +1,7 @@
 import express from "express";
 import catsRouter from "./controllers/catsController";
 import cryptoRouter from "./controllers/cryptoController";
+import authRouter from "./controllers/authController";
 import secureRouter from "./controllers/secureController";
 import sessionsRouter from "./controllers/sessionsController";
 import swaggerUi from 'swagger-ui-express';
@@ -25,6 +26,11 @@ const options: swaggerJsdoc.Options = {
         description: 'Development server',
       },
     ],
+    components: {
+      securitySchemes: {
+        bearerAuth: { type: 'http', scheme: 'bearer' },
+      },
+    },
   },
   apis: ['./src/**/*.ts'], 
 };
@@ -34,6 +40,7 @@ app.use('/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
 app.use("/api/cats", catsRouter);
 app.use("/api/crypto-keys", cryptoRouter);
+app.use("/api/auth", authRouter);
 app.use("/api/secure", secureRouter);
 app.use("/api/sessions", sessionsRouter);
 
