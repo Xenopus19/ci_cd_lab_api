@@ -89,3 +89,41 @@
   color: var(--accent);
   font-size: 15px;
 }
+
+.exchange-panel {
+  padding: 24px;
+  border-top: 1px solid var(--border);
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+.exchange-panel > .btn {
+  margin: 12px 0;
+}
+
+.exchange-list {
+  margin: 0;
+  padding-left: 24px;
+}
+
+.exchange-list li {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.exchange-list summary {
+  cursor: pointer;
+}
+
+.exchange-list h3,
+.exchange-list h4 {
+  margin: 12px 0 4px;
+}
+
+.exchange-list pre {
+  margin: 0;
+  padding: 8px;
+  background: var(--code-bg);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

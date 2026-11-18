@@ -24,6 +24,16 @@ Register or log in with Keycloak, then open **Secure messaging** from your
 profile. Logout ends the Keycloak browser session. The page
 sends encrypted messages, shows decrypted replies, and lists sessions; it
 creates a new cryptographic session if the current one expires.
+The HTTP exchanges panel records API calls in sending order, including session
+creation and expired-session retries. Expand an entry to see its request and
+browser-visible response headers and bodies. The message form retains the
+original text, while the exchange shows the encrypted payload and the page
+shows the decrypted reply. The log is kept in memory until cleared or the page
+is reloaded. Bearer tokens and named token, private-key, and symmetric-key
+fields (including encrypted session keys) are masked in the log. It can still
+contain passwords and other sensitive data.
+Browser-added request headers and response headers hidden by CORS are not visible
+to the application.
 
 Web Crypto requires a secure context (HTTPS or localhost). For production,
 serve the app over HTTPS and route `/api` to the API. The shared HTTP client
