@@ -82,10 +82,12 @@ authRouter.post('/login', (req: Request, res: Response): Response => {
  * @openapi
  * /api/auth/me:
  *   get:
- *     summary: Get the authenticated user
+ *     summary: Get the local authenticated user
  *     tags: [Auth]
  *     security:
  *       - bearerAuth: []
+ *         localAuth: []
+ *     description: X-Local-Authorization must contain Bearer followed by the local token.
  *     responses:
  *       200: { description: The current user }
  *       401: { description: Not authenticated }
@@ -98,10 +100,12 @@ authRouter.get('/me', requireAuth, (_req: Request, res: Response<unknown, { user
  * @openapi
  * /api/auth/logout:
  *   post:
- *     summary: Invalidate the current auth token
+ *     summary: Invalidate the current local auth token
  *     tags: [Auth]
  *     security:
  *       - bearerAuth: []
+ *         localAuth: []
+ *     description: X-Local-Authorization must contain Bearer followed by the local token. This does not log out of Keycloak.
  *     responses:
  *       204: { description: Signed out }
  *       401: { description: Not authenticated }

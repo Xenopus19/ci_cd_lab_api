@@ -10,6 +10,13 @@ in its login settings, and create a public OpenID Connect client named
 (for example `http://localhost:5173/*`) as valid redirect URIs, its origin
 (`http://localhost:5173`) as a web origin, and `http://localhost:5173/` as a
 valid post-logout redirect URI. Use the actual Vite port if it differs.
+Create a client scope with an **Audience** protocol mapper that adds the
+custom audience `lab-api` to the access token (not just the ID token), and
+assign that scope as a default client scope to `lab-spa`. Verify the access
+token contains `lab-api` in `aud`. The API issuer defaults to
+`http://localhost:8080/realms/oidc-lab`; set `OIDC_ISSUER` on the API if the
+realm publishes a different issuer, and ensure the API can reach discovery and
+JWKS at the published URLs.
 Set `VITE_KEYCLOAK_URL`, `VITE_KEYCLOAK_REALM`, and
 `VITE_KEYCLOAK_CLIENT_ID` to override the defaults.
 
@@ -19,9 +26,18 @@ sends encrypted messages, shows decrypted replies, and lists sessions; it
 creates a new cryptographic session if the current one expires.
 
 Web Crypto requires a secure context (HTTPS or localhost). For production,
-serve the app over HTTPS and route `/api` to the API. The page requires login
-in the frontend; the cryptographic and session-list API endpoints themselves
-do not currently require authentication.
+serve the app over HTTPS and route `/api` to the API. The shared HTTP client
+refreshes and sends the Keycloak access token on API requests; the API
+validates it on every `/api` route. The displayed username comes from the ID
+token.
+
+For a separate API origin, build the SPA with `VITE_API_URL` set to the API
+origin (for example `https://api.example.com`) and set `SPA_ORIGIN` on the API
+to the exact SPA origin (for example `https://app.example.com`, without a
+trailing slash). CORS is disabled unless `SPA_ORIGIN` is set. The API permits
+GET, HEAD, POST, PUT, DELETE and OPTIONS, and the Authorization, Content-Type,
+X-Local-Authorization, X-Rsa-Id and X-Session-Id headers. With the default
+same-origin proxy, neither variable is needed.
 
 ## Vite template
 

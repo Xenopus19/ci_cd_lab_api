@@ -16,12 +16,12 @@ class RequestError extends Error {
 export class SecureClient {
     private session: Session | undefined;
 
-    constructor(private readonly baseUrl: string) {}
+    constructor(private readonly baseUrl: string, private readonly token: string) {}
 
     private async request<T>(path: string, init: RequestInit = {}): Promise<T> {
         const response = await fetch(`${this.baseUrl}${path}`, {
             ...init,
-            headers: { 'content-type': 'application/json', ...init.headers }
+            headers: { 'content-type': 'application/json', ...init.headers, authorization: `Bearer ${this.token}` }
         });
         const body: unknown = await response.json();
         if (!response.ok) {

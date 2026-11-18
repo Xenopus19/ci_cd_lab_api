@@ -1,6 +1,8 @@
 import request from "supertest";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+vi.mock("../middleware/requireOidcAuth", () => ({ requireOidcAuth: (_req: unknown, _res: unknown, next: () => void) => next() }));
+
 async function loadApp() {
   vi.resetModules();
   const { default: app } = await import("../app");

@@ -2,9 +2,13 @@ import { createInterface } from 'node:readline/promises';
 import { SecureClient } from './secureClient';
 
 const baseUrl = process.env.SERVER_URL ?? 'http://localhost:3000';
-const client = new SecureClient(baseUrl);
 
 async function main(): Promise<void> {
+    const token = process.env.ACCESS_TOKEN;
+    if (!token) {
+        throw new Error('Set ACCESS_TOKEN to a lab-api access token.');
+    }
+    const client = new SecureClient(baseUrl, token);
     const rl = createInterface({ input: process.stdin, output: process.stdout });
     while (true) {
         let message: string;
@@ -25,4 +29,7 @@ async function main(): Promise<void> {
     rl.close();
 }
 
-main();
+main().catch((error: unknown) => {
+    console.error(error instanceof Error ? error.message : error);
+    process.exitCode = 1;
+});

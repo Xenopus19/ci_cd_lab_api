@@ -1,8 +1,9 @@
 import { type NextFunction, type Request, type Response } from 'express';
 import { getUserByToken, type PublicUser } from '../services/authService';
 
-export function getBearerToken(req: Request): string | undefined {
-    const match = /^Bearer (.+)$/.exec(req.headers.authorization ?? '');
+function getLocalBearerToken(req: Request): string | undefined {
+    const header = req.headers['x-local-authorization'];
+    const match = /^Bearer (.+)$/.exec(typeof header === 'string' ? header : '');
     return match?.[1];
 }
 
@@ -11,7 +12,7 @@ export function requireAuth(
     res: Response<unknown, { user: PublicUser; token: string }>,
     next: NextFunction
 ): void {
-    const token = getBearerToken(req);
+    const token = getLocalBearerToken(req);
     const user = token ? getUserByToken(token) : undefined;
     if (!token || !user) {
         res.status(401).json({ error: 'Authentication required.' });

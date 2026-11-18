@@ -5,6 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SecureClient } from '../../browser-client/src/secureClient';
 import app from '../app';
 
+vi.mock('../middleware/requireOidcAuth', () => ({ requireOidcAuth: (_req: unknown, _res: unknown, next: () => void) => next() }));
+
 describe('browser secure client', () => {
     let server: Server;
     let client: SecureClient;
@@ -15,6 +17,10 @@ describe('browser secure client', () => {
         messageRequests = 0;
         forcedError = undefined;
         const testApp = express();
+        testApp.use('/api', (req, _res, next) => {
+            expect(req.headers.authorization).toBe('Bearer test-token');
+            next();
+        });
         testApp.use('/api/secure/message', (_req, res, next) => {
             messageRequests++;
             if (forcedError) {
@@ -27,7 +33,7 @@ describe('browser secure client', () => {
         server = await new Promise<Server>((resolve) => {
             const listener = testApp.listen(0, '127.0.0.1', () => resolve(listener));
         });
-        client = new SecureClient(`http://127.0.0.1:${(server.address() as AddressInfo).port}`);
+        client = new SecureClient(`http://127.0.0.1:${(server.address() as AddressInfo).port}`, async () => 'test-token');
     });
 
     afterEach(async () => {

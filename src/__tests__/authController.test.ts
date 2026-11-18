@@ -1,6 +1,8 @@
 import request from 'supertest';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import app from '../app';
+
+vi.mock('../middleware/requireOidcAuth', () => ({ requireOidcAuth: (_req: unknown, _res: unknown, next: () => void) => next() }));
 
 describe('auth API', () => {
     it('registers, reads the profile, and logs out', async () => {
@@ -9,7 +11,7 @@ describe('auth API', () => {
         expect(registered.body.user.name).toBe('Alice');
         expect(registered.body.user).not.toHaveProperty('passwordHash');
 
-        const auth = { Authorization: `Bearer ${registered.body.token}` };
+        const auth = { 'X-Local-Authorization': `Bearer ${registered.body.token}` };
         const me = await request(app).get('/api/auth/me').set(auth);
         expect(me.status).toBe(200);
         expect(me.body.name).toBe('Alice');
@@ -39,6 +41,6 @@ describe('auth API', () => {
 
     it('requires a token for protected endpoints', async () => {
         expect((await request(app).get('/api/auth/me')).status).toBe(401);
-        expect((await request(app).get('/api/auth/me').set('Authorization', 'Bearer nope')).status).toBe(401);
+        expect((await request(app).get('/api/auth/me').set('X-Local-Authorization', 'Bearer nope')).status).toBe(401);
     });
 });

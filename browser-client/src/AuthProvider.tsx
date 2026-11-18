@@ -3,9 +3,9 @@ import { AuthContext } from './auth'
 import { keycloak } from './utils/keycloak'
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const claims = keycloak.idTokenParsed ?? keycloak.tokenParsed
+  const claims = keycloak.idTokenParsed
   const user = keycloak.authenticated
-    ? { name: claims?.preferred_username ?? claims?.name ?? keycloak.subject ?? 'User' }
+    ? { name: claims?.preferred_username ?? claims?.name ?? claims?.sub ?? 'User' }
     : null
 
   const redirectUri = (path = '/profile') => `${window.location.origin}${path}`

@@ -22,11 +22,14 @@
   },
   "homepage": "https://github.com/Xenopus19/ci_cd_lab_api#readme",
   "dependencies": {
+    "cors": "^2.8.6",
     "express": "^5.2.1",
+    "express-oauth2-jwt-bearer": "^1.11.0",
     "swagger-jsdoc": "^6.3.0",
     "swagger-ui-express": "^5.0.1"
   },
   "devDependencies": {
+    "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "@types/node": "^26.6.2",
     "@types/supertest": "^6.0.0",

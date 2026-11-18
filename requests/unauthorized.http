@@ -1,0 +1,39 @@
+@baseUrl = http://localhost:3000
+
+### Generate RSA keys without a token
+POST {{baseUrl}}/api/crypto-keys/generate/rsa-keys
+
+### Retrieve a public key without a token
+GET {{baseUrl}}/api/crypto-keys/rsa-public-key/1
+
+### Create a cryptographic session without a token
+POST {{baseUrl}}/api/secure/session
+Content-Type: application/json
+x-rsa-id: 1
+x-session-id: example-session
+
+{"encryptedKey":"example"}
+
+### Send a message without a token
+POST {{baseUrl}}/api/secure/message
+Content-Type: application/json
+x-session-id: example-session
+
+{"ciphertext":"example","hash":"example"}
+
+### View sessions without a token
+GET {{baseUrl}}/api/sessions
+
+### List cats with a malformed Bearer token
+GET {{baseUrl}}/api/cats
+Authorization: Bearer not-a-jwt
+
+### Generate RSA keys with a malformed Bearer token
+POST {{baseUrl}}/api/crypto-keys/generate/rsa-keys
+Authorization: Bearer not-a-jwt
+
+### A local auth endpoint also requires a realm token
+POST {{baseUrl}}/api/auth/login
+Content-Type: application/json
+
+{"name":"example","password":"example"}

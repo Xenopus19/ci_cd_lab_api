@@ -1,4 +1,5 @@
 import axios, { type AxiosInstance } from 'axios'
+import { createApiClient } from './http'
 
 interface Session {
   id: string
@@ -30,8 +31,8 @@ export class SecureClient {
   private session: Session | undefined
   private readonly http: AxiosInstance
 
-  constructor(baseURL = '') {
-    this.http = axios.create({ baseURL })
+  constructor(baseURL?: string, getToken?: () => Promise<string>) {
+    this.http = createApiClient(baseURL, getToken)
   }
 
   async listSessions(): Promise<SessionInfo[]> {

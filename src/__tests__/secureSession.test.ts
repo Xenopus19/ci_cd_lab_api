@@ -11,6 +11,8 @@ import { requireSession } from '../middleware/requireSession';
 import { encrypt as rsaEncrypt, generateRsaKeyPair } from '../services/rsaService';
 import { storeSession, type Session } from '../services/sessionService';
 
+vi.mock('../middleware/requireOidcAuth', () => ({ requireOidcAuth: (_req: unknown, _res: unknown, next: () => void) => next() }));
+
 describe('secure sessions', () => {
     let server: Server;
     let baseUrl: string;
@@ -152,7 +154,7 @@ describe('secure sessions', () => {
             }
             return response;
         }));
-        const client = new SecureClient(baseUrl);
+        const client = new SecureClient(baseUrl, 'test-token');
         const first = await client.sendMessage('first');
         const second = await client.sendMessage('second');
         expect(second.sessionId).toBe(first.sessionId);
@@ -186,7 +188,7 @@ describe('secure sessions', () => {
             return realFetch(input, init);
         });
         vi.stubGlobal('fetch', fetchSpy);
-        const client = new SecureClient(baseUrl);
+        const client = new SecureClient(baseUrl, 'test-token');
         await expect(client.sendMessage('hello')).rejects.toThrow('404 {"error":"Unknown session."}');
         expect(fetchSpy.mock.calls.filter(([url]) => String(url).endsWith('/api/secure/session'))).toHaveLength(1);
         expect(fetchSpy.mock.calls.filter(([url]) => String(url).endsWith('/api/secure/message'))).toHaveLength(1);
@@ -201,7 +203,7 @@ describe('secure sessions', () => {
             return realFetch(input, init);
         });
         vi.stubGlobal('fetch', fetchSpy);
-        const client = new SecureClient(baseUrl);
+        const client = new SecureClient(baseUrl, 'test-token');
         await expect(client.sendMessage('hello')).rejects.toThrow('440 {"error":"Session expired."}');
         expect(fetchSpy.mock.calls.filter(([url]) => String(url).endsWith('/api/secure/session'))).toHaveLength(2);
         expect(fetchSpy.mock.calls.filter(([url]) => String(url).endsWith('/api/secure/message'))).toHaveLength(2);
@@ -216,7 +218,7 @@ describe('secure sessions', () => {
             return realFetch(input, init);
         });
         vi.stubGlobal('fetch', fetchSpy);
-        const client = new SecureClient(baseUrl);
+        const client = new SecureClient(baseUrl, 'test-token');
         await expect(client.sendMessage('hello')).rejects.toThrow('404 {"error":"Session expired."}');
         expect(fetchSpy.mock.calls.filter(([url]) => String(url).endsWith('/api/secure/session'))).toHaveLength(1);
         expect(fetchSpy.mock.calls.filter(([url]) => String(url).endsWith('/api/secure/message'))).toHaveLength(1);
