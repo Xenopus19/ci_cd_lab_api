@@ -5,6 +5,7 @@ import express, { type Request, type Response } from 'express';
 import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SecureClient } from '../../client-app/src/secureClient';
+import { TokenProvider } from '../../client-app/src/tokenProvider';
 import { encrypt, generateKey } from '../../packages/aesEncryption/src/index';
 import app from '../app';
 import { requireSession } from '../middleware/requireSession';
@@ -154,7 +155,7 @@ describe('secure sessions', () => {
             }
             return response;
         }));
-        const client = new SecureClient(baseUrl, 'test-token');
+        const client = new SecureClient(baseUrl, async () => 'test-token');
         const first = await client.sendMessage('first');
         const second = await client.sendMessage('second');
         expect(second.sessionId).toBe(first.sessionId);
@@ -179,6 +180,30 @@ describe('secure sessions', () => {
         expect(JSON.parse(next.reply).message).toBe('next');
     });
 
+    it('uses the service token for every API request and renews it after expiry', async () => {
+        const now = Date.now();
+        const clock = vi.spyOn(Date, 'now').mockReturnValue(now);
+        const realFetch = globalThis.fetch;
+        const apiTokens: string[] = [];
+        let tokenRequests = 0;
+        vi.stubGlobal('fetch', vi.fn<typeof fetch>(async (input, init) => {
+            if (String(input) === 'http://keycloak/token') {
+                tokenRequests++;
+                return Response.json({ access_token: `token-${tokenRequests}`, expires_in: 1 });
+            }
+            apiTokens.push(new Headers(init?.headers).get('authorization') ?? '');
+            return realFetch(input, init);
+        }));
+        const provider = new TokenProvider('http://keycloak/token', 'client', 'secret');
+        const client = new SecureClient(baseUrl, () => provider.getToken());
+        expect(JSON.parse((await client.sendMessage('first')).reply).message).toBe('first');
+        expect(apiTokens).toEqual(Array(4).fill('Bearer token-1'));
+        clock.mockReturnValue(now + 1000);
+        expect(JSON.parse((await client.sendMessage('second')).reply).message).toBe('second');
+        expect(tokenRequests).toBe(2);
+        expect(apiTokens.slice(4)).toEqual(Array(5).fill('Bearer token-2'));
+    });
+
     it('does not renew for unrelated errors', async () => {
         const realFetch = globalThis.fetch;
         const fetchSpy = vi.fn<typeof fetch>(async (input, init) => {
@@ -188,7 +213,7 @@ describe('secure sessions', () => {
             return realFetch(input, init);
         });
         vi.stubGlobal('fetch', fetchSpy);
-        const client = new SecureClient(baseUrl, 'test-token');
+        const client = new SecureClient(baseUrl, async () => 'test-token');
         await expect(client.sendMessage('hello')).rejects.toThrow('404 {"error":"Unknown session."}');
         expect(fetchSpy.mock.calls.filter(([url]) => String(url).endsWith('/api/secure/session'))).toHaveLength(1);
         expect(fetchSpy.mock.calls.filter(([url]) => String(url).endsWith('/api/secure/message'))).toHaveLength(1);
@@ -203,7 +228,7 @@ describe('secure sessions', () => {
             return realFetch(input, init);
         });
         vi.stubGlobal('fetch', fetchSpy);
-        const client = new SecureClient(baseUrl, 'test-token');
+        const client = new SecureClient(baseUrl, async () => 'test-token');
         await expect(client.sendMessage('hello')).rejects.toThrow('440 {"error":"Session expired."}');
         expect(fetchSpy.mock.calls.filter(([url]) => String(url).endsWith('/api/secure/session'))).toHaveLength(2);
         expect(fetchSpy.mock.calls.filter(([url]) => String(url).endsWith('/api/secure/message'))).toHaveLength(2);
@@ -218,7 +243,7 @@ describe('secure sessions', () => {
             return realFetch(input, init);
         });
         vi.stubGlobal('fetch', fetchSpy);
-        const client = new SecureClient(baseUrl, 'test-token');
+        const client = new SecureClient(baseUrl, async () => 'test-token');
         await expect(client.sendMessage('hello')).rejects.toThrow('404 {"error":"Session expired."}');
         expect(fetchSpy.mock.calls.filter(([url]) => String(url).endsWith('/api/secure/session'))).toHaveLength(1);
         expect(fetchSpy.mock.calls.filter(([url]) => String(url).endsWith('/api/secure/message'))).toHaveLength(1);

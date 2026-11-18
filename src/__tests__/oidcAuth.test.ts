@@ -4,6 +4,7 @@ import type { AddressInfo } from 'node:net';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { SecureClient as NodeSecureClient } from '../../client-app/src/secureClient';
+import { TokenProvider } from '../../client-app/src/tokenProvider';
 import { SecureClient as BrowserSecureClient } from '../../browser-client/src/secureClient';
 
 describe('OIDC bearer authentication', () => {
@@ -14,6 +15,7 @@ describe('OIDC bearer authentication', () => {
     let app: typeof import('../app').default;
     let discoveryRequests = 0;
     let keyRequests = 0;
+    let tokenRequests = 0;
     const previousIssuer = process.env.OIDC_ISSUER;
     const previousSpaOrigin = process.env.SPA_ORIGIN;
 
@@ -37,6 +39,22 @@ describe('OIDC bearer authentication', () => {
             } else if (req.url === '/realms/oidc-lab/certs') {
                 keyRequests++;
                 res.end(JSON.stringify({ keys: [{ ...keys.publicKey.export({ format: 'jwk' }), kid: 'test-key', alg: 'RS256', use: 'sig' }] }));
+            } else if (req.url === '/realms/oidc-lab/protocol/openid-connect/token') {
+                let body = '';
+                req.setEncoding('utf8');
+                req.on('data', (chunk: string) => { body += chunk; });
+                req.on('end', () => {
+                    if (req.method !== 'POST' ||
+                        req.headers.authorization !== `Basic ${Buffer.from('lab-console:test-secret').toString('base64')}` ||
+                        req.headers['content-type'] !== 'application/x-www-form-urlencoded' ||
+                        body !== 'grant_type=client_credentials') {
+                        res.statusCode = 401;
+                        res.end('{}');
+                        return;
+                    }
+                    tokenRequests++;
+                    res.end(JSON.stringify({ access_token: token({ sub: 'service-account-lab-console' }), expires_in: 60 }));
+                });
             } else {
                 res.statusCode = 404;
                 res.end('{}');
@@ -160,9 +178,11 @@ describe('OIDC bearer authentication', () => {
         });
         const baseUrl = `http://127.0.0.1:${(api.address() as AddressInfo).port}`;
         try {
-            const nodeClient = new NodeSecureClient(baseUrl, token());
+            const provider = new TokenProvider(`${issuer}/protocol/openid-connect/token`, 'lab-console', 'test-secret');
+            const nodeClient = new NodeSecureClient(baseUrl, () => provider.getToken());
             const browserClient = new BrowserSecureClient(baseUrl, async () => token());
             expect(JSON.parse((await nodeClient.sendMessage('node')).reply).message).toBe('node');
+            expect(tokenRequests).toBe(1);
             expect(JSON.parse((await browserClient.sendMessage('browser')).reply).message).toBe('browser');
             expect(await browserClient.listSessions()).toHaveLength(2);
         } finally {

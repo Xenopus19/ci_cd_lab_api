@@ -1,14 +1,17 @@
 import { createInterface } from 'node:readline/promises';
 import { SecureClient } from './secureClient';
+import { TokenProvider } from './tokenProvider';
 
 const baseUrl = process.env.SERVER_URL ?? 'http://localhost:3000';
+const tokenUrl = process.env.OIDC_TOKEN_URL ?? 'http://localhost:8080/realms/oidc-lab/protocol/openid-connect/token';
 
 async function main(): Promise<void> {
-    const token = process.env.ACCESS_TOKEN;
-    if (!token) {
-        throw new Error('Set ACCESS_TOKEN to a lab-api access token.');
+    const clientSecret = process.env.CLIENT_SECRET;
+    if (!clientSecret) {
+        throw new Error('Set CLIENT_SECRET to the Keycloak client secret.');
     }
-    const client = new SecureClient(baseUrl, token);
+    const tokenProvider = new TokenProvider(tokenUrl, process.env.CLIENT_ID ?? 'lab-console', clientSecret);
+    const client = new SecureClient(baseUrl, () => tokenProvider.getToken());
     const rl = createInterface({ input: process.stdin, output: process.stdout });
     while (true) {
         let message: string;

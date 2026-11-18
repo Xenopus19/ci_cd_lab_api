@@ -54,11 +54,24 @@ nginx для обслуговування сторінки та проксі д�
 
 ## Захищений клієнт
 
-Запустіть API, задайте `ACCESS_TOKEN` як access token Keycloak з аудиторією
-`lab-api`, а потім виконайте `npm start -w client-app`. Клієнт використовує цей
-токен для всіх запитів; після його закінчення задайте новий і перезапустіть клієнт.
-За потреби задайте
-змінну `SERVER_URL`; типова адреса — `http://localhost:3000`. Клієнт повторно
+У Keycloak створіть confidential OpenID Connect client `lab-console`, увімкніть
+Client authentication та Service accounts roles. Додайте до нього default client
+scope з Audience mapper для `lab-api` (див. налаштування у
+`browser-client/README.md`), щоб access token сервісного акаунта містив цю
+аудиторію. Запустіть Keycloak та API.
+
+Задайте секрет клієнта як `CLIENT_SECRET` у середовищі або у файлі
+`client-app/.env` (не додавайте його до Git). Виконайте `npm start -w client-app`
+з кореня проєкту; потрібен Node.js 22.9 або новіший. Змінні середовища мають
+пріоритет над `.env`. Необов'язкові змінні: `CLIENT_ID` (типово `lab-console`),
+`OIDC_TOKEN_URL` (типово
+`http://localhost:8080/realms/oidc-lab/protocol/openid-connect/token`) і
+`SERVER_URL` (типово `http://localhost:3000`). Для production використовуйте
+HTTPS для Keycloak та API. Клієнт отримує токен через client credentials без
+входу користувача, передає його в усіх запитах API та отримує новий після
+закінчення терміну дії.
+
+Клієнт повторно
 використовує сесію для повідомлень. Сесія діє одну секунду з моменту створення;
 після відповіді `440` з `{ "error": "Session expired." }` клієнт створює нову
 сесію та один раз повторює повідомлення. Інші помилки не спричиняють повтору.
