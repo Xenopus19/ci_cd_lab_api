@@ -1,11 +1,9 @@
 import { createContext, useContext } from 'react'
-import type { User } from './api'
 
 export interface AuthState {
-  user: User | null
-  loading: boolean
-  signIn: (name: string, password: string) => Promise<void>
-  signUp: (name: string, password: string) => Promise<void>
+  user: { name: string } | null
+  signIn: (redirectPath?: string) => Promise<void>
+  signUp: (redirectPath?: string) => Promise<void>
   signOut: () => Promise<void>
 }
 

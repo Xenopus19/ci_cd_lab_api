@@ -1,39 +1,17 @@
-import { useEffect, useState, type ReactNode } from 'react'
-import * as api from './api'
+import type { ReactNode } from 'react'
 import { AuthContext } from './auth'
+import { keycloak } from './utils/keycloak'
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<api.User | null>(null)
-  const [loading, setLoading] = useState(() => api.getStoredToken() !== null)
+  const claims = keycloak.idTokenParsed ?? keycloak.tokenParsed
+  const user = keycloak.authenticated
+    ? { name: claims?.preferred_username ?? claims?.name ?? keycloak.subject ?? 'User' }
+    : null
 
-  useEffect(() => {
-    const token = api.getStoredToken()
-    if (!token) {
-      return
-    }
-    api
-      .fetchCurrentUser(token)
-      .then(setUser)
-      .catch(() => api.clearToken())
-      .finally(() => setLoading(false))
-  }, [])
+  const redirectUri = (path = '/profile') => `${window.location.origin}${path}`
+  const signIn = (path?: string) => keycloak.login({ redirectUri: redirectUri(path) })
+  const signUp = (path?: string) => keycloak.register({ redirectUri: redirectUri(path) })
+  const signOut = () => keycloak.logout({ redirectUri: redirectUri('/') })
 
-  const accept = ({ user, token }: { user: api.User; token: string }) => {
-    api.storeToken(token)
-    setUser(user)
-  }
-
-  const signIn = async (name: string, password: string) => accept(await api.login(name, password))
-  const signUp = async (name: string, password: string) => accept(await api.register(name, password))
-
-  const signOut = async () => {
-    const token = api.getStoredToken()
-    api.clearToken()
-    setUser(null)
-    if (token) {
-      await api.logout(token).catch(() => undefined)
-    }
-  }
-
-  return <AuthContext value={{ user, loading, signIn, signUp, signOut }}>{children}</AuthContext>
+  return <AuthContext value={{ user, signIn, signUp, signOut }}>{children}</AuthContext>
 }

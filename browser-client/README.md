@@ -1,8 +1,20 @@
 # Browser client
 
-Run the API on port 3000, then run `npm install` and `npm run dev` in this
-directory. The Vite development server proxies `/api` requests to the API.
-Register or log in, then open **Secure messaging** from your profile. The page
+Run the API on port 3000 and Keycloak on port 8080, then run `npm install`
+and `npm run dev` in this directory. The Vite development server proxies `/api`
+requests to the API.
+
+Configure Keycloak with a realm named `oidc-lab`, enable **User registration**
+in its login settings, and create a public OpenID Connect client named
+`lab-spa`. Enable standard flow and PKCE with `S256`; allow the SPA's URLs
+(for example `http://localhost:5173/*`) as valid redirect URIs, its origin
+(`http://localhost:5173`) as a web origin, and `http://localhost:5173/` as a
+valid post-logout redirect URI. Use the actual Vite port if it differs.
+Set `VITE_KEYCLOAK_URL`, `VITE_KEYCLOAK_REALM`, and
+`VITE_KEYCLOAK_CLIENT_ID` to override the defaults.
+
+Register or log in with Keycloak, then open **Secure messaging** from your
+profile. Logout ends the Keycloak browser session. The page
 sends encrypted messages, shows decrypted replies, and lists sessions; it
 creates a new cryptographic session if the current one expires.
 
