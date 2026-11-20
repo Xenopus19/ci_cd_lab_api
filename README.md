@@ -115,6 +115,197 @@ API, веб-інтерфейс та відповідні Services. Потріб�
 доступним StorageClass і можливість створювати Role та RoleBinding. Окремі
 маніфести в `k8` не потрібні для встановлення chart і мають власні налаштування.
 
+### Підключення demo до бази даних для backup
+
+У локальному прикладі джерело PostgreSQL — Service `cats-db` у namespace
+`cats`. Для workload у namespace `demo` використовуйте DNS-ім'я
+`cats-db.cats.svc.cluster.local` і Secret `users-db-connection` з такими
+значеннями:
+
+| Ключ | Demo value |
+| --- | --- |
+| `PGHOST` | `cats-db.cats.svc.cluster.local` |
+| `PGPORT` | `5432` |
+| `PGDATABASE` | `cats` |
+| `PGUSER` | `cats` |
+| `PGPASSWORD` | пароль з Secret `cats-db` у namespace `cats` |
+
+Створіть namespace, якщо його ще немає. Передайте пароль через захищений файл
+без кінцевого переводу рядка; не додавайте файл або реальний пароль до Git:
+
+```sh
+kubectl create namespace demo --dry-run=client -o yaml | kubectl apply -f -
+kubectl -n demo create secret generic users-db-connection \
+  --from-literal=PGHOST=cats-db.cats.svc.cluster.local \
+  --from-literal=PGPORT=5432 \
+  --from-literal=PGDATABASE=cats \
+  --from-literal=PGUSER=cats \
+  --from-file=PGPASSWORD=/secure/path/postgres-password \
+  --dry-run=client -o yaml | kubectl apply -f -
+```
+
+Замініть шлях на файл із тим самим паролем, що й у `cats-db`. Secret має бути
+в namespace workload, а PostgreSQL Service може бути в іншому namespace, якщо
+`PGHOST` містить його DNS-ім'я. Для локального кластера PVC архівів
+`postgres-backups` окремий від тому PostgreSQL; у поточному kind-кластері він
+використовує StorageClass `standard` і запитує `1Gi`. Через режим
+`WaitForFirstConsumer` PVC отримає стан `Bound`, коли workload змонтує його.
+Якщо PVC ще не існує, створіть його (для іншого кластера за потреби змініть
+StorageClass та розмір):
+
+```sh
+kubectl -n demo create -f - <<'YAML'
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-backups
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: standard
+  resources:
+    requests:
+      storage: 1Gi
+YAML
+```
+
+### Контролер DatabaseBackup
+
+Контролер працює лише в namespace `demo`. Встановіть CRD з
+`databasebackup-crd.yaml`, створіть у `demo` Secret з ключами `PGHOST`, `PGPORT`,
+`PGDATABASE`, `PGUSER`, `PGPASSWORD` і PVC з ім'ям, указаним у
+`spec.backupPVCName`. Застосуйте приклад `databasebackup.yaml`. Kubernetes 1.27+
+потрібен для `spec.timeZone` CronJob.
+
+Для локального kind-кластера зберіть і завантажте окремий образ, а потім
+встановіть контролер і його обмежені namespace права:
+
+```sh
+docker build -f Dockerfile.backup-controller -t databasebackup-controller:local .
+kind load docker-image databasebackup-controller:local --name lectures
+kubectl apply -f databasebackup-crd.yaml
+kubectl apply -f k8/backup-controller.yaml
+kubectl apply -f databasebackup.yaml
+kubectl -n demo rollout status deployment/databasebackup-controller
+```
+
+Для іншого кластера опублікуйте образ у доступному registry і змініть image у
+`k8/backup-controller.yaml`. Для локального запуску замість Deployment:
+`npm run build:backup-controller` та `npm run start:backup-controller`;
+потрібен Node.js 24 і поточний kubeconfig з тими самими правами.
+
+При старті контролер обробляє список ресурсів і продовжує watch з його
+resourceVersion; при 410 отримує новий список. Повна повторна перевірка кожні
+60 секунд відновлює видалені CronJob і повторює невдалі операції. CronJob має
+посилання ownerReference на DatabaseBackup; сторонній CronJob з тим самим ім'ям
+не змінюється, а конфлікт записується в log. Видалення DatabaseBackup залишає
+видалення CronJob Kubernetes garbage collector. Наявні архіви на PVC не
+видаляються.
+
+CronJob запускає `postgres:17` і `pg_dump -Fc`, записує архів з UTC-часом та
+унікальним іменем pod у `/backups` на PVC; незавершений файл має суфікс
+`.tmp`. Шлях до успішно створеного архіву записується в log контейнера;
+невдалий `pg_dump` або rename завершує Job з помилкою. Паралельні запуски
+одного CronJob заборонені. Образ `pg_dump` має
+підтримувати версію вихідного PostgreSQL (не новішу за 17). Це приклад:
+налаштуйте захист та зберігання архівів, retention, TLS і перевірку
+відновлення окремо. Користувачі, які можуть створювати DatabaseBackup у `demo`,
+можуть запускати workload з указаним Secret та PVC, тому обмежте ці права.
+
+#### Демонстраційна перевірка
+
+Приклади нижче виконуються в Bash після встановлення контролера; вони змінюють
+наявний `users-db-backup` і видаляють його керований CronJob. Не запускайте їх
+для production-даних. Для `--as` потрібне право impersonate ServiceAccount.
+
+Перевірте створення та оновлення того самого CronJob. Дочекайтеся кожної зміни;
+після перевірки обов'язково відновіть початковий розклад:
+
+```sh
+kubectl -n demo get databasebackup users-db-backup
+kubectl -n demo get cronjob users-db-backup
+ORIGINAL=$(kubectl -n demo get databasebackup users-db-backup -o jsonpath='{.spec.schedule}')
+UID_BEFORE=$(kubectl -n demo get cronjob users-db-backup -o jsonpath='{.metadata.uid}')
+kubectl -n demo patch databasebackup users-db-backup --type=merge \
+  -p '{"spec":{"schedule":"1 2 * * *"}}'
+kubectl -n demo wait cronjob/users-db-backup \
+  --for='jsonpath={.spec.schedule}=1 2 * * *' --timeout=90s
+kubectl -n demo get cronjob users-db-backup \
+  -o custom-columns=NAME:.metadata.name,UID:.metadata.uid,SCHEDULE:.spec.schedule
+test "$UID_BEFORE" = "$(kubectl -n demo get cronjob users-db-backup -o jsonpath='{.metadata.uid}')"
+kubectl -n demo patch databasebackup users-db-backup --type=merge \
+  -p "{\"spec\":{\"schedule\":\"$ORIGINAL\"}}"
+kubectl -n demo wait cronjob/users-db-backup \
+  --for="jsonpath={.spec.schedule}=$ORIGINAL" --timeout=90s
+```
+
+Для прикладу початковий розклад має відрізнятися від `1 2 * * *`; інакше
+виберіть інший розклад в обох командах. Якщо перевірку перервано, відновіть
+початкове значення вручну. Для перевірки відновлення запишіть старий UID,
+видаліть CronJob і дочекайтеся появи нового UID (до 60 секунд плюс затримка API):
+
+```sh
+kubectl -n demo get cronjob users-db-backup -o custom-columns=NAME:.metadata.name,UID:.metadata.uid
+kubectl -n demo delete cronjob users-db-backup
+for i in $(seq 1 90); do
+  kubectl -n demo get cronjob users-db-backup -o custom-columns=NAME:.metadata.name,UID:.metadata.uid \
+    2>/dev/null && break
+  sleep 1
+done
+```
+
+Створіть Job вручну і збережіть log. Наведені нижче команди запускайте з
+`set -o pipefail`, щоб помилка в конвеєрі не приховувалася:
+
+```sh
+set -o pipefail
+JOB="backup-check-$(date +%Y%m%d%H%M%S)"
+kubectl -n demo create job --from=cronjob/users-db-backup "$JOB"
+kubectl -n demo wait --for=condition=complete "job/$JOB" --timeout=240s
+kubectl -n demo logs "job/$JOB" | tee backup-job.log
+ARCHIVE=$(sed -n 's/^Backup created: //p' backup-job.log)
+test -n "$ARCHIVE"
+```
+
+`k8/backup-restore-check.yaml` створює тимчасовий окремий сервер PostgreSQL з
+порожньою базою `backup_restore_check` на `emptyDir` та клієнтський Pod із
+PVC `postgres-backups`, змонтованим лише для читання. Маніфест використовує
+`users-db-connection` як джерело пароля; для інших назв Secret або PVC змініть
+маніфест. Це лише локальна перевірка: ізольована база містить копію даних і
+доступна в кластері, а після видалення Pod її дані зникнуть. Обмежте доступ до
+неї та до log відповідно до чутливості даних.
+
+```sh
+kubectl create -f k8/backup-restore-check.yaml
+kubectl -n demo wait --for=condition=Ready \
+  pod/databasebackup-restore-db pod/databasebackup-restore-client --timeout=240s
+kubectl -n demo exec databasebackup-restore-client -- pg_restore --list "$ARCHIVE" | tee backup-archive-list.log
+kubectl -n demo exec databasebackup-restore-client -- psql -X -v ON_ERROR_STOP=1 \
+  -c "SELECT current_database();" \
+  -c "SELECT count(*) AS user_tables FROM information_schema.tables WHERE table_schema NOT IN ('pg_catalog', 'information_schema');"
+# user_tables має дорівнювати 0 перед відновленням.
+kubectl -n demo exec databasebackup-restore-client -- pg_restore --verbose \
+  --exit-on-error --single-transaction --no-owner --no-acl \
+  -d backup_restore_check "$ARCHIVE" 2>&1 | tee backup-restore.log
+kubectl -n demo exec databasebackup-restore-client -- psql -X -v ON_ERROR_STOP=1 \
+  -c "SELECT table_schema, table_name FROM information_schema.tables WHERE table_schema NOT IN ('pg_catalog', 'information_schema') ORDER BY table_name;" \
+  -c "SELECT count(*) AS restored_cats FROM public.cats;"
+```
+
+Log `backup-restore.log` містить послідовність відновлення об'єктів і даних.
+Після перевірки видаліть лише тестові ресурси командою
+`kubectl delete -f k8/backup-restore-check.yaml`; PVC та архів залишаться.
+Для повторного тесту створіть їх знову, щоб база була порожньою.
+
+Перевірка мінімальних прав:
+
+```sh
+kubectl auth can-i impersonate serviceaccounts -n demo
+SA=system:serviceaccount:demo:databasebackup-controller
+kubectl auth can-i list databasebackups.backup.example.com -n demo --as="$SA" # yes
+kubectl auth can-i create cronjobs.batch -n demo --as="$SA"                   # yes
+kubectl auth can-i list secrets -n demo --as="$SA"                            # no
+```
+
 Перед встановленням створіть namespace і Secret `cats-db` у ньому. Secret
 повинен містити ключі `password` і `DATABASE_URL`; пароль у них має бути
 однаковим. За значень chart за замовчуванням URL має вигляд

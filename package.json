@@ -8,6 +8,8 @@
     "start": "node dist/index.js",
     "dev": "tsx src/index.ts",
     "build": "tsup src/index.ts --format esm --clean --no-minify",
+    "build:backup-controller": "tsup src/backup-controller-main.ts --format esm --out-dir dist-backup --clean --no-minify",
+    "start:backup-controller": "node dist-backup/backup-controller-main.js",
     "db:migrate": "sequelize-cli db:migrate --config config/database.cjs --migrations-path database/migrations",
     "db:migrate:undo": "sequelize-cli db:migrate:undo --config config/database.cjs --migrations-path database/migrations"
   },
@@ -24,6 +26,7 @@
   },
   "homepage": "https://github.com/Xenopus19/ci_cd_lab_api#readme",
   "dependencies": {
+    "@kubernetes/client-node": "^2.0.2",
     "express": "^5.2.1",
     "pg": "^8.23.1",
     "pg-hstore": "^2.3.4",

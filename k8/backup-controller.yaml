@@ -1,0 +1,53 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: databasebackup-controller
+  namespace: demo
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: databasebackup-controller
+  namespace: demo
+rules:
+  - apiGroups: ["backup.example.com"]
+    resources: ["databasebackups"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["batch"]
+    resources: ["cronjobs"]
+    verbs: ["get", "create", "update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: databasebackup-controller
+  namespace: demo
+subjects:
+  - kind: ServiceAccount
+    name: databasebackup-controller
+    namespace: demo
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: databasebackup-controller
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: databasebackup-controller
+  namespace: demo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: databasebackup-controller
+  template:
+    metadata:
+      labels:
+        app: databasebackup-controller
+    spec:
+      serviceAccountName: databasebackup-controller
+      containers:
+        - name: controller
+          image: databasebackup-controller:local
+          imagePullPolicy: IfNotPresent

@@ -1,0 +1,77 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: databasebackup-restore-db
+  namespace: demo
+  labels:
+    app: databasebackup-restore-db
+spec:
+  automountServiceAccountToken: false
+  containers:
+    - name: postgres
+      image: postgres:17
+      env:
+        - name: POSTGRES_USER
+          value: restore_user
+        - name: POSTGRES_DB
+          value: backup_restore_check
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: users-db-connection
+              key: PGPASSWORD
+      readinessProbe:
+        exec:
+          command: ["pg_isready", "-U", "restore_user", "-d", "backup_restore_check"]
+        periodSeconds: 3
+      volumeMounts:
+        - name: data
+          mountPath: /var/lib/postgresql/data
+  volumes:
+    - name: data
+      emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: databasebackup-restore-db
+  namespace: demo
+spec:
+  selector:
+    app: databasebackup-restore-db
+  ports:
+    - port: 5432
+      targetPort: 5432
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: databasebackup-restore-client
+  namespace: demo
+spec:
+  automountServiceAccountToken: false
+  containers:
+    - name: client
+      image: postgres:17
+      command: ["/bin/sh", "-c", "exec sleep infinity"]
+      envFrom:
+        - secretRef:
+            name: users-db-connection
+      env:
+        - name: PGHOST
+          value: databasebackup-restore-db
+        - name: PGPORT
+          value: "5432"
+        - name: PGDATABASE
+          value: backup_restore_check
+        - name: PGUSER
+          value: restore_user
+      volumeMounts:
+        - name: backups
+          mountPath: /backups
+          readOnly: true
+  volumes:
+    - name: backups
+      persistentVolumeClaim:
+        claimName: postgres-backups
+        readOnly: true

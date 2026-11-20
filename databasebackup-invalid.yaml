@@ -1,0 +1,9 @@
+apiVersion: backup.example.com/v1alpha1
+kind: DatabaseBackup
+metadata:
+  name: users-db-backup-invalid
+  namespace: demo
+spec:
+  timeZone: Etc/UTC
+  connectionSecretName: users-db-connection
+  backupPVCName: postgres-backups
